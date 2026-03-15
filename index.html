@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Argument Mapper for Humanities Research</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+--parchment: #faf6f0;
+--ink: #2c1810;
+--burgundy: #7b2d3b;
+--gold: #c4943e;
+--sage: #5a7a5a;
+--cream: #f5ede0;
+--light-burgundy: #a84e5e;
+}
+* { box-sizing: border-box; }
+body {
+font-family: 'Inter', sans-serif;
+background: var(--parchment);
+color: var(--ink);
+min-height: 100vh;
+}
+h1, h2, h3, h4 { font-family: 'Crimson Pro', serif; }
+.btn-primary {
+background: var(--burgundy);
+color: white;
+min-height: 44px;
+min-width: 44px;
+border-radius: 10px;
+font-weight: 600;
+transition: all 0.2s;
+}
+.btn-primary:hover { background: var(--light-burgundy); transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(0); }
+.btn-secondary {
+background: var(--cream);
+color: var(--burgundy);
+border: 1.5px solid var(--burgundy);
+min-height: 44px;
+min-width: 44px;
+border-radius: 10px;
+font-weight: 600;
+transition: all 0.2s;
+}
+.btn-secondary:hover { background: var(--burgundy); color: white; }
+.card {
+background: white;
+border-radius: 14px;
+box-shadow: 0 2px 12px rgba(44,24,16,0.08);
+border: 1px solid rgba(123,45,59,0.1);
+}
+textarea, input, select {
+border: 1.5px solid #d4c5b5;
+border-radius: 10px;
+padding: 12px;
+font-size: 15px;
+background: white;
+transition: border-color 0.2s;
+width: 100%;
+font-family: 'Inter', sans-serif;
+}
+textarea:focus, input:focus, select:focus {
+outline: none;
+border-color: var(--burgundy);
+box-shadow: 0 0 0 3px rgba(123,45,59,0.1);
+}
+.tab-active {
+border-bottom: 3px solid var(--burgundy);
+color: var(--burgundy);
+font-weight: 600;
+}
+.tab-inactive {
+border-bottom: 3px solid transparent;
+color: #8a7a6a;
+}
+#network-container {
+width: 100%;
+height: 400px;
+border-radius: 12px;
+border: 1.5px solid #d4c5b5;
+background: white;
+}
+.node-claim { background: var(--burgundy); }
+.node-evidence { background: var(--sage); }
+.node-counter { background: #c4563e; }
+.node-source { background: var(--gold); }
+.badge {
+display: inline-flex;
+align-items: center;
+padding: 3px 10px;
+border-radius: 20px;
+font-size: 12px;
+font-weight: 600;
+}
+.spinner {
+border: 3px solid #f3f3f3;
+border-top: 3px solid var(--burgundy);
+border-radius: 50%;
+width: 24px;
+height: 24px;
+animation: spin 0.8s linear infinite;
+display: inline-block;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.fade-in { animation: fadeIn 0.3s ease-in; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.toast {
+position: fixed;
+bottom: 80px;
+left: 50%;
+transform: translateX(-50%);
+background: var(--ink);
+color: white;
+padding: 12px 24px;
+border-radius: 10px;
+z-index: 1000;
+font-size: 14px;
+animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s;
+}
+@keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+@keyframes toastOut { to { opacity: 0; transform: translateX(-50%) translateY(20px); } }
+.modal-overlay {
+position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 900;
+display: flex; align-items: flex-end; justify-content: center;
+}
+.modal-content {
+background: white; border-radius: 20px 20px 0 0; width: 100%; max-width: 500px;
+max-height: 85vh; overflow-y: auto; padding: 24px;
+animation: slideUp 0.3s ease;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media (min-width: 768px) {
+.modal-content { border-radius: 20px; margin-bottom: 40px; }
+#network-container { height: 500px; }
+}
+.loading-overlay {
+position: fixed; inset: 0; background: rgba(250,246,240,0.9); z-index: 950;
+display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.source-item { transition: all 0.2s; }
+.source-item:hover { background: var(--cream); }
+</style>
+</head>
+<body>
+
+<div id="app" class="max-w-lg mx-auto pb-20">
+<!-- Header -->
+<header class="sticky top-0 z-50 bg-gradient-to-r from-[#7b2d3b] to-[#5a2030] text-white px-4 py-3 shadow-lg">
+<div class="flex items-center justify-between">
+<div>
+<h1 class="text-xl font-bold tracking-tight">📜 Argument Mapper</h1>
+<p class="text-xs opacity-80 mt-0.5">Humanities Research Assistant</p>
+</div>
+<button onclick="showSettings()" class="p-2 rounded-lg hover:bg-white/10 transition" aria-label="Settings">
+<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+</button>
+</div>
+</header>
+
+<!-- Tabs -->
+<nav class="flex border-b border-gray-200 bg-white sticky top-[60px] z-40">
+<button onclick="switchTab('sources')" id="tab-sources" class="flex-1 py-3 text-center text-sm tab-active transition">📚 Sources</button>
+<button onclick="switchTab('map')" id="tab-map" class="flex-1 py-3 text-center text-sm tab-inactive transition">🗺️ Map</button>
+<button onclick="switchTab('outline')" id="tab-outline" class="flex-1 py-3 text-center text-sm tab-inactive transition">📝 Outline</button>
+<button onclick="switchTab('insights')" id="tab-insights" class="flex-1 py-3 text-center text-sm tab-inactive transition">💡 Insights</button>
+</nav>
+
+<!-- Sources Tab -->
+<div id="panel-sources" class="p-4 space-y-4 fade-in">
+<!-- Thesis Statement -->
+<div class="card p-4">
+<label class="block text-sm font-semibold text-gray-700 mb-2">🎯 Your Thesis Statement</label>
+<textarea id="thesis-input" rows="3" placeholder="e.g., 'The Romantic poets' engagement with industrialization reveals an ambivalent relationship between progress and pastoral nostalgia that prefigures modern environmentalism.'" class="text-sm"></textarea>
+<button onclick="saveThesis()" class="btn-primary w-full mt-3 px-4 py-2 text-sm">Save Thesis</button>
+</div>
+
+<!-- Add Source -->
+<div class="card p-4">
+<h3 class="text-lg font-bold mb-3">➕ Add Source Material</h3>
+<div class="space-y-3">
+<div>
+<label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Source Type</label>
+<select id="source-type">
+<option value="primary">Primary Source</option>
+<option value="secondary">Secondary Source</option>
+<option value="notes">Research Notes</option>
+</select>
+</div>
+<div>
+<label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Title / Citation</label>
+<input id="source-title" type="text" placeholder="e.g., Wordsworth, 'Tintern Abbey' (1798)">
+</div>
+<div>
+<label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Content / Key Passages</label>
+<textarea id="source-content" rows="5" placeholder="Paste key passages, arguments, quotes, or your notes here. The AI will extract claims, evidence, and rhetorical strategies..."></textarea>
+</div>
+<button onclick="addSource()" class="btn-primary w-full px-4 py-3 text-sm flex items-center justify-center gap-2">
+<span>🔍 Analyze & Add Source</span>
+</button>
+</div>
+</div>
+
+<!-- Source List -->
+<div id="source-list" class="space-y-3">
+<h3 class="text-lg font-bold">📖 Your Sources <span id="source-count" class="text-sm font-normal text-gray-500">(0)</span></h3>
+<div id="sources-empty" class="card p-6 text-center text-gray-400">
+<p class="text-3xl mb-2">📚</p>
+<p class="text-sm">No sources yet. Add your first source above to start building your argument map!</p>
+</div>
+<div id="sources-container"></div>
+</div>
+</div>
+
+<!-- Map Tab -->
+<div id="panel-map" class="p-4 space-y-4 hidden fade-in">
+<div class="card p-4">
+<div class="flex items-center justify-between mb-3">
+<h3 class="text-lg font-bold">🗺️ Argument Map</h3>
+<button onclick="rebuildMap()" class="btn-secondary px-3 py-1 text-xs">🔄 Refresh</button>
+</div>
+<div class="flex flex-wrap gap-2 mb-3 text-xs">
+<span class="badge" style="background:#7b2d3b22;color:#7b2d3b;">● Claims</span>
+<span class="badge" style="background:#5a7a5a22;color:#5a7a5a;">● Evidence</span>
+<span class="badge" style="background:#c4563e22;color:#c4563e;">● Counter-args</span>
+<span class="badge" style="background:#c4943e22;color:#c4943e;">● Sources</span>
+</div>
+<div id="network-container"></div>
+<p class="text-xs text-gray-400 mt-2 text-center">Tap nodes to see details. Pinch to zoom.</p>
+</div>
+
+<div id="node-detail" class="card p-4 hidden">
+<h4 id="node-detail-title" class="font-bold text-sm mb-2"></h4>
+<p id="node-detail-content" class="text-sm text-gray-600"></p>
+</div>
+
+<button onclick="generateMapAnalysis()" class="btn-primary w-full px-4 py-3 text-sm">🧠 AI: Analyze Map Connections</button>
+<div id="map-analysis" class="card p-4 hidden">
+<h4 class="font-bold text-sm mb-2">🔗 Connection Analysis</h4>
+<div id="map-analysis-content" class="text-sm text-gray-600 whitespace-pre-wrap"></div>
+</div>
+</div>
+
+<!-- Outline Tab -->
+<div id="panel-outline" class="p-4 space-y-4 hidden fade-in">
+<div class="card p-4">
+<h3 class="text-lg font-bold mb-3">📝 Generate Outline</h3>
+<div class="space-y-3">
+<div>
+<label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Paper Type</label>
+<select id="paper-type">
+<option value="seminar">Seminar Paper (15-20pp)</option>
+<option value="thesis_chapter">Thesis Chapter (25-40pp)</option>
+<option value="short_essay">Short Essay (5-8pp)</option>
+<option value="conference">Conference Paper (8-12pp)</option>
+</select>
+</div>
+<div>
+<label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Rubric / Requirements (optional)</label>
+<textarea id="rubric-input" rows="3" placeholder="Paste rubric criteria or instructor requirements here..."></textarea>
+</div>
+<button onclick="generateOutline()" class="btn-primary w-full px-4 py-3 text-sm">✨ Generate Annotated Outline</button>
+</div>
+</div>
+<div id="outline-result" class="card p-4 hidden">
+<div class="flex items-center justify-between mb-3">
+<h4 class="font-bold">📋 Your Outline</h4>
+<button onclick="copyOutline()" class="btn-secondary px-3 py-1 text-xs">📋 Copy</button>
+</div>
+<div id="outline-content" class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed"></div>
+</div>
+
+<button onclick="generateParagraph()" class="btn-secondary w-full px-4 py-3 text-sm" id="btn-paragraph">✍️ Draft a Sample Paragraph</button>
+<div id="paragraph-result" class="card p-4 hidden">
+<div class="flex items-center justify-between mb-3">
+<h4 class="font-bold">✍️ Sample Paragraph</h4>
+<button onclick="copyParagraph()" class="btn-secondary px-3 py-1 text-xs">📋 Copy</button>
+</div>
+<div id="paragraph-content" class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed"></div>
+</div>
+</div>
+
+<!-- Insights Tab -->
+<div id="panel-insights" class="p-4 space-y-4 hidden fade-in">
+<button onclick="generateInsights()" class="btn-primary w-full px-4 py-3 text-sm">💡 Generate Research Insights</button>
+
+<div id="insights-container" class="space-y-4">
+<div id="insights-empty" class="card p-6 text-center text-gray-400">
+<p class="text-3xl mb-2">💡</p>
+<p class="text-sm">Add sources and click above to get AI-powered insights about missing evidence, counter-arguments, and citation threads.</p>
+</div>
+</div>
+
+<div id="counter-args-section" class="card p-4 hidden">
+<h4 class="font-bold text-sm mb-2">⚔️ Potential Counter-Arguments</h4>
+<div id="counter-args-content" class="text-sm text-gray-600 whitespace-pre-wrap"></div>
+</div>
+
+<div id="missing-evidence-section" class="card p-4 hidden">
+<h4 class="font-bold text-sm mb-2">🔎 Missing Evidence & Under-Explored Sources</h4>
+<div id="missing-evidence-content" class="text-sm text-gray-600 whitespace-pre-wrap"></div>
+</div>
+
+<div id="citation-threads-section" class="card p-4 hidden">
+<h4 class="font-bold text-sm mb-2">🧵 Citation Thread Suggestions</h4>
+<div id="citation-threads-content" class="text-sm text-gray-600 whitespace-pre-wrap"></div>
+</div>
+
+<div id="rhetorical-section" class="card p-4 hidden">
+<h4 class="font-bold text-sm mb-2">🎭 Rhetorical Strategy Analysis</h4>
+<div id="rhetorical-content" class="text-sm text-gray-600 whitespace-pre-wrap"></div>
+</div>
+</div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="loading-overlay hidden">
+<div class="spinner mb-4" style="width:40px;height:40px;border-width:4px;"></div>
+<p id="loading-text" class="text-sm font-semibold text-gray-600">Analyzing...</p>
+<p class="text-xs text-gray-400 mt-1">Our AI is reading your sources carefully 📖</p>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="modal-overlay hidden" onclick="closeModal(event)">
+<div class="modal-content" onclick="event.stopPropagation()">
+<div id="modal-body"></div>
+</div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<script>
+// Global AI tracking
+window.aiTotalInputTokens = 0;
+window.aiTotalOutputTokens = 0;
+window.aiTotalTime = 0;
+window.aiTimeByAlias = {};
+
+// App state
+let appState = {
+thesis: '',
+sources: [],
+mapNodes: [],
+mapEdges: [],
+outline: '',
+paragraph: '',
+insights: null
+};
+
+// Load from localStorage
+function loadState() {
+try {
+const saved = localStorage.getItem('argumentMapper');
+if (saved) {
+appState = JSON.parse(saved);
+document.getElementById('thesis-input').value = appState.thesis || '';
+renderSources();
+}
+} catch(e) { console.error('Load error', e); }
+}
+
+function saveState() {
+try {
+localStorage.setItem('argumentMapper', JSON.stringify(appState));
+} catch(e) { console.error('Save error', e); }
+}
+
+// Toast
+function showToast(msg) {
+const container = document.getElementById('toast-container');
+const toast = document.createElement('div');
+toast.className = 'toast';
+toast.textContent = msg;
+container.appendChild(toast);
+setTimeout(() => toast.remove(), 3000);
+}
+
+// Loading
+function showLoading(text) {
+document.getElementById('loading-text').textContent = text || 'Analyzing...';
+document.getElementById('loading-overlay').classList.remove('hidden');
+}
+function hideLoading() {
+document.getElementById('loading-overlay').classList.add('hidden');
+}
+
+// Tab switching
+function switchTab(tab) {
+['sources','map','outline','insights'].forEach(t => {
+document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
+document.getElementById(`tab-${t}`).className = t === tab
+? 'flex-1 py-3 text-center text-sm tab-active transition'
+: 'flex-1 py-3 text-center text-sm tab-inactive transition';
+});
+if (tab === 'map') rebuildMap();
+}
+
+// AI Call with retry
+async function callAI(alias, params, retries = 3) {
+const start = Date.now();
+for (let attempt = 0; attempt < retries; attempt++) {
+try {
+const res = await fetch('https://16504442930.work/run_prompt', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ alias, params })
+});
+const data = await res.json();
+if (data.error) {
+if (attempt < retries - 1) continue;
+const friendly = await reformatError(data);
+throw new Error(friendly);
+}
+const elapsed = Date.now() - start;
+window.aiTotalTime += elapsed;
+window.aiTimeByAlias[alias] = (window.aiTimeByAlias[alias] || 0) + elapsed;
+if (data.input_tokens) window.aiTotalInputTokens += data.input_tokens;
+if (data.output_tokens) window.aiTotalOutputTokens += data.output_tokens;
+return data;
+} catch(e) {
+if (attempt < retries - 1) continue;
+throw e;
+}
+}
+}
+
+async function reformatError(apiResponse) {
+try {
+const res = await callAI('genericAI', {
+prompt: `You are a friendly UX assistant. Reformat this API error into a user-friendly message that empowers the user to fix it. Include the full API response. API Response: ${JSON.stringify(apiResponse)}. Return a JSON object with key "message" as a string.`
+}, 1);
+return res.message || 'Something went wrong. Please try again.';
+} catch(e) {
+return `Something went wrong: ${JSON.stringify(apiResponse)}. Please try again.`;
+}
+}
+
+// Save thesis
+function saveThesis() {
+appState.thesis = document.getElementById('thesis-input').value.trim();
+if (!appState.thesis) {
+showToast('⚠️ Please enter a thesis statement first');
+return;
+}
+saveState();
+showToast('✅ Thesis saved!');
+}
+
+// Add source
+async function addSource() {
+const type = document.getElementById('source-type').value;
+const title = document.getElementById('source-title').value.trim();
+const content = document.getElementById('source-content').value.trim();
+
+if (!title || !content) {
+showToast('⚠️ Please fill in title and content');
+return;
+}
+
+showLoading('Analyzing source with AI... 🔍');
+
+try {
+const thesis = appState.thesis || 'No thesis specified yet';
+const prompt = `You are an expert humanities research assistant specializing in argument analysis. Analyze the following source material in the context of the researcher's thesis.
+
+THESIS: "${thesis}"
+
+SOURCE TYPE: ${type}
+SOURCE TITLE: "${title}"
+SOURCE CONTENT: "${content}"
+
+Extract and return a JSON object with exactly this structure:
+{
+  "claims": [{"text": string, "strength": string ("strong"|"moderate"|"weak")}],
+  "evidence": [{"text": string, "type": string ("quote"|"data"|"example"|"historical_fact")}],
+  "rhetorical_strategies": [{"name": string, "description": string}],
+  "relevance_to_thesis": string,
+  "key_themes": [string],
+  "potential_counter_arguments": [string],
+  "suggested_connections": [string]
+}
+
+Each array should have 1-5 items. Be specific and scholarly. Focus on humanities analysis methods.`;
+
+const result = await callAI('genericAI', { prompt });
+
+const source = {
+id: Date.now().toString(),
+type,
+title,
+content: content.substring(0, 500),
+analysis: result,
+addedAt: new Date().toISOString()
+};
+
+appState.sources.push(source);
+saveState();
+renderSources();
+
+document.getElementById('source-title').value = '';
+document.getElementById('source-content').value = '';
+
+showToast('✅ Source analyzed and added!');
+} catch(e) {
+showToast('❌ ' + (e.message || 'Analysis failed'));
+} finally {
+hideLoading();
+}
+}
+
+// Render sources
+function renderSources() {
+const container = document.getElementById('sources-container');
+const empty = document.getElementById('sources-empty');
+const count = document.getElementById('source-count');
+
+count.textContent = `(${appState.sources.length})`;
+
+if (appState.sources.length === 0) {
+empty.classList.remove('hidden');
+container.innerHTML = '';
+return;
+}
+
+empty.classList.add('hidden');
+container.innerHTML = appState.sources.map((s, i) => {
+const typeEmoji = s.type === 'primary' ? '📜' : s.type === 'secondary' ? '📖' : '📝';
+const typeBg = s.type === 'primary' ? 'bg-amber-50 text-amber-700' : s.type === 'secondary' ? 'bg-blue-50 text-blue-700' : 'bg-green-50 text-green-700';
+const claimCount = s.analysis?.claims?.length || 0;
+const evidCount = s.analysis?.evidence?.length || 0;
+
+return `<div class="card p-4 source-item fade-in">
+<div class="flex items-start justify-between gap-2">
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 mb-1">
+<span class="badge ${typeBg} text-xs">${typeEmoji} ${s.type}</span>
+</div>
+<h4 class="font-bold text-sm truncate">${s.title}</h4>
+<p class="text-xs text-gray-400 mt-1">${claimCount} claims · ${evidCount} evidence pieces</p>
+</div>
+<div class="flex gap-1">
+<button onclick="viewSource(${i})" class="p-2 rounded-lg hover:bg-gray-100 transition" aria-label="View">
+<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+</button>
+<button onclick="removeSource(${i})" class="p-2 rounded-lg hover:bg-red-50 transition" aria-label="Delete">
+<svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+</button>
+</div>
+</div>
+${s.analysis?.relevance_to_thesis ? `<p class="text-xs text-gray-500 mt-2 line-clamp-2">${s.analysis.relevance_to_thesis}</p>` : ''}
+</div>`;
+}).join('');
+}
+
+function viewSource(idx) {
+const s = appState.sources[idx];
+if (!s) return;
+const a = s.analysis || {};
+
+let html = `<div class="space-y-4">
+<div class="flex items-center justify-between">
+<h3 class="text-lg font-bold">${s.title}</h3>
+<button onclick="document.getElementById('modal').classList.add('hidden')" class="p-2 rounded-lg hover:bg-gray-100">✕</button>
+</div>
+<span class="badge ${s.type === 'primary' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}">${s.type}</span>`;
+
+if (a.relevance_to_thesis) {
+html += `<div><h4 class="text-xs font-bold text-gray-500 uppercase mb-1">Relevance to Thesis</h4><p class="text-sm">${a.relevance_to_thesis}</p></div>`;
+}
+if (a.claims?.length) {
+html += `<div><h4 class="text-xs font-bold text-gray-500 uppercase mb-1">Claims Extracted</h4><ul class="space-y-1">${a.claims.map(c => `<li class="text-sm flex items-start gap-2"><span class="badge text-xs mt-0.5 ${c.strength === 'strong' ? 'bg-green-100 text-green-700' : c.strength === 'moderate' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}">${c.strength}</span>${c.text}</li>`).join('')}</ul></div>`;
+}
+if (a.evidence?.length) {
+html += `<div><h4 class="text-xs font-bold text-gray-500 uppercase mb-1">Evidence</h4><ul class="space-y-1">${a.evidence.map(e => `<li class="text-sm"><span class="badge bg-gray-100 text-gray-600 text-xs mr-1">${e.type}</span>${e.text}</li>`).join('')}</ul></div>`;
+}
+if (a.rhetorical_strategies?.length) {
+html += `<div><h4 class="text-xs font-bold text-gray-500 uppercase mb-1">Rhetorical Strategies</h4><ul class="space-y-1">${a.rhetorical_strategies.map(r => `<li class="text-sm"><strong>${r.name}:</strong> ${r.description}</li>`).join('')}</ul></div>`;
+}
+if (a.potential_counter_arguments?.length) {
+html += `<div><h4 class="text-xs font-bold text-gray-500 uppercase mb-1">Counter-Arguments</h4><ul class="list-disc list-inside space-y-1">${a.potential_counter_arguments.map(c => `<li class="text-sm">${c}</li>`).join('')}</ul></div>`;
+}
+if (a.key_themes?.length) {
+html += `<div><h4 class="text-xs font-bold text-gray-500 uppercase mb-1">Key Themes</h4><div class="flex flex-wrap gap-1">${a.key_themes.map(t => `<span class="badge bg-purple-50 text-purple-700 text-xs">${t}</span>`).join('')}</div></div>`;
+}
+
+html += '</div>';
+document.getElementById('modal-body').innerHTML = html;
+document.getElementById('modal').classList.remove('hidden');
+}
+
+function closeModal(e) {
+if (e.target === document.getElementById('modal')) {
+document.getElementById('modal').classList.add('hidden');
+}
+}
+
+function removeSource(idx) {
+if (confirm('Remove this source?')) {
+appState.sources.splice(idx, 1);
+saveState();
+renderSources();
+showToast('🗑️ Source removed');
+}
+}
+
+// Build argument map
+function rebuildMap() {
+const container = document.getElementById('network-container');
+const nodes = [];
+const edges = [];
+let nodeId = 1;
+
+// Add thesis node
+if (appState.thesis) {
+nodes.push({
+id: nodeId,
+label: 'THESIS',
+title: appState.thesis,
+color: { background: '#2c1810', border: '#2c1810' },
+font: { color: '#fff', size: 14, face: 'Crimson Pro' },
+shape: 'box',
+margin: 10,
+_detail: appState.thesis
+});
+const thesisId = nodeId;
+nodeId++;
+
+// Add sources & their analysis
+appState.sources.forEach((source, si) => {
+const sourceNodeId = nodeId++;
+nodes.push({
+id: sourceNodeId,
+label: source.title.substring(0, 25) + (source.title.length > 25 ? '...' : ''),
+title: source.title,
+color: { background: '#c4943e', border: '#a67b2e' },
+font: { color: '#fff', size: 11 },
+shape: 'box',
+margin: 8,
+_detail: `[${source.type}] ${source.title}`
+});
+edges.push({ from: thesisId, to: sourceNodeId, color: { color: '#d4c5b5' }, width: 1 });
+
+const a = source.analysis || {};
+
+// Claims
+(a.claims || []).forEach((claim, ci) => {
+const claimId = nodeId++;
+nodes.push({
+id: claimId,
+label: claim.text.substring(0, 30) + '...',
+title: claim.text,
+color: { background: '#7b2d3b', border: '#5a2030' },
+font: { color: '#fff', size: 10 },
+shape: 'box',
+margin: 6,
+_detail: `Claim (${claim.strength}): ${claim.text}`
+});
+edges.push({ from: sourceNodeId, to: claimId, color: { color: '#7b2d3b88' }, width: 1 });
+});
+
+// Evidence
+(a.evidence || []).forEach((ev, ei) => {
+const evId = nodeId++;
+nodes.push({
+id: evId,
+label: ev.text.substring(0, 25) + '...',
+title: ev.text,
+color: { background: '#5a7a5a', border: '#3d5a3d' },
+font: { color: '#fff', size: 10 },
+shape: 'ellipse',
+_detail: `Evidence (${ev.type}): ${ev.text}`
+});
+edges.push({ from: sourceNodeId, to: evId, color: { color: '#5a7a5a88' }, width: 1 });
+});
+
+// Counter-arguments
+(a.potential_counter_arguments || []).forEach((ca, ci) => {
+const caId = nodeId++;
+nodes.push({
+id: caId,
+label: '⚔️ ' + ca.substring(0, 22) + '...',
+title: ca,
+color: { background: '#c4563e', border: '#a33d2a' },
+font: { color: '#fff', size: 10 },
+shape: 'diamond',
+_detail: `Counter-argument: ${ca}`
+});
+edges.push({ from: sourceNodeId, to: caId, dashes: true, color: { color: '#c4563e88' }, width: 1 });
+});
+});
+}
+
+// Check for thematic connections across sources
+const themeMap = {};
+appState.sources.forEach((source, si) => {
+(source.analysis?.key_themes || []).forEach(theme => {
+const key = theme.toLowerCase();
+if (!themeMap[key]) themeMap[key] = [];
+themeMap[key].push(si);
+});
+});
+
+const data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
+const options = {
+physics: { stabilization: { iterations: 100 }, barnesHut: { gravitationalConstant: -3000, springLength: 150 } },
+interaction: { dragNodes: true, zoomView: true, dragView: true },
+layout: { improvedLayout: true },
+nodes: { borderWidth: 2, shadow: true },
+edges: { smooth: { type: 'continuous' } }
+};
+
+const network = new vis.Network(container, data, options);
+
+network.on('click', function(params) {
+if (params.nodes.length > 0) {
+const nodeData = nodes.find(n => n.id === params.nodes[0]);
+if (nodeData) {
+document.getElementById('node-detail').classList.remove('hidden');
+document.getElementById('node-detail-title').textContent = nodeData.label;
+document.getElementById('node-detail-content').textContent = nodeData._detail || nodeData.title || '';
+}
+} else {
+document.getElementById('node-detail').classList.add('hidden');
+}
+});
+}
+
+// Map analysis
+async function generateMapAnalysis() {
+if (appState.sources.length < 2) {
+showToast('⚠️ Add at least 2 sources for map analysis');
+return;
+}
+showLoading('Analyzing argument connections... 🧠');
+try {
+const sourceSummary = appState.sources.map(s => {
+const a = s.analysis || {};
+return `SOURCE: "${s.title}" (${s.type})\nClaims: ${(a.claims||[]).map(c=>c.text).join('; ')}\nThemes: ${(a.key_themes||[]).join(', ')}`;
+}).join('\n\n');
+
+const prompt = `You are an expert humanities research methodologist. Analyze the connections between these sources for a researcher with this thesis:
+
+THESIS: "${appState.thesis}"
+
+${sourceSummary}
+
+Identify:
+1. Thematic linkages across texts
+2. Complementary arguments
+3. Tensions or contradictions
+4. Gaps in the argumentative structure
+
+Return a JSON object: {"analysis": string}
+The analysis should be a detailed, scholarly paragraph (300-400 words) with specific references to the sources.`;
+
+const result = await callAI('genericAI', { prompt });
+document.getElementById('map-analysis-content').textContent = result.analysis || 'No analysis generated.';
+document.getElementById('map-analysis').classList.remove('hidden');
+} catch(e) {
+showToast('❌ ' + (e.message || 'Analysis failed'));
+} finally {
+hideLoading();
+}
+}
+
+// Generate outline
+async function generateOutline() {
+if (!appState.thesis) {
+showToast('⚠️ Please save a thesis statement first');
+switchTab('sources');
+return;
+}
+if (appState.sources.length === 0) {
+showToast('⚠️ Add at least one source');
+return;
+}
+
+const paperType = document.getElementById('paper-type').value;
+const rubric = document.getElementById('rubric-input').value.trim();
+
+showLoading('Crafting your annotated outline... ✍️');
+try {
+const sourceSummary = appState.sources.map(s => {
+const a = s.analysis || {};
+return `"${s.title}" (${s.type}): Claims: ${(a.claims||[]).map(c=>c.text).join('; ')}. Evidence: ${(a.evidence||[]).map(e=>e.text).join('; ')}. Themes: ${(a.key_themes||[]).join(', ')}`;
+}).join('\n');
+
+const prompt = `You are an expert academic writing coach specializing in humanities papers. Generate a detailed annotated outline for a ${paperType.replace('_', ' ')} paper.
+
+THESIS: "${appState.thesis}"
+
+SOURCES AVAILABLE:
+${sourceSummary}
+
+${rubric ? `RUBRIC/REQUIREMENTS:\n${rubric}` : ''}
+
+Create an annotated outline that:
+1. Has clear section headers with Roman numerals
+2. Under each section, lists specific claims to make and which sources support them
+3. Notes where evidence should be placed
+4. Suggests rhetorical transitions between sections
+5. Marks where counter-arguments should be addressed
+6. Estimates paragraph count per section
+
+Return a JSON object: {"outline": string}
+The outline should be a well-formatted text (use line breaks and indentation with spaces) of 500-800 words.`;
+
+const result = await callAI('genericAI', { prompt });
+appState.outline = result.outline || '';
+document.getElementById('outline-content').textContent = appState.outline;
+document.getElementById('outline-result').classList.remove('hidden');
+saveState();
+} catch(e) {
+showToast('❌ ' + (e.message || 'Outline generation failed'));
+} finally {
+hideLoading();
+}
+}
+
+function copyOutline() {
+navigator.clipboard.writeText(appState.outline).then(() => showToast('📋 Outline copied!'));
+}
+
+// Generate paragraph
+async function generateParagraph() {
+if (!appState.thesis || appState.sources.length === 0) {
+showToast('⚠️ Need thesis and sources first');
+return;
+}
+
+showLoading('Drafting sample paragraph... ✍️');
+try {
+const sourceSummary = appState.sources.slice(0, 3).map(s => {
+const a = s.analysis || {};
+return `"${s.title}": ${(a.claims||[]).map(c=>c.text).join('; ')}. Evidence: ${(a.evidence||[]).slice(0,2).map(e=>e.text).join('; ')}`;
+}).join('\n');
+
+const prompt = `You are a skilled academic writer in the humanities. Draft a well-crafted body paragraph for a paper with this thesis:
+
+THESIS: "${appState.thesis}"
+
+AVAILABLE SOURCE MATERIAL:
+${sourceSummary}
+
+Write a single, polished academic paragraph (150-250 words) that:
+- Opens with a clear topic sentence
+- Integrates evidence from the sources with proper in-text citations
+- Includes close reading or analysis
+- Transitions smoothly
+- Uses humanities disciplinary conventions
+
+Return a JSON object: {"paragraph": string}`;
+
+const result = await callAI('genericAI', { prompt });
+appState.paragraph = result.paragraph || '';
+document.getElementById('paragraph-content').textContent = appState.paragraph;
+document.getElementById('paragraph-result').classList.remove('hidden');
+saveState();
+} catch(e) {
+showToast('❌ ' + (e.message || 'Paragraph generation failed'));
+} finally {
+hideLoading();
+}
+}
+
+function copyParagraph() {
+navigator.clipboard.writeText(appState.paragraph).then(() => showToast('📋 Paragraph copied!'));
+}
+
+// Generate insights
+async function generateInsights() {
+if (appState.sources.length === 0) {
+showToast('⚠️ Add sources to get insights');
+return;
+}
+
+showLoading('Generating research insights... 💡');
+try {
+const sourceSummary = appState.sources.map(s => {
+const a = s.analysis || {};
+return `"${s.title}" (${s.type}): Claims: ${(a.claims||[]).map(c=>c.text).join('; ')}. Themes: ${(a.key_themes||[]).join(', ')}. Counter-args: ${(a.potential_counter_arguments||[]).join('; ')}`;
+}).join('\n');
+
+const prompt = `You are a senior humanities research advisor. Based on the following thesis and sources, provide comprehensive research insights.
+
+THESIS: "${appState.thesis}"
+
+SOURCES:
+${sourceSummary}
+
+Return a JSON object with exactly this structure:
+{
+  "counter_arguments": string,
+  "missing_evidence": string,
+  "citation_threads": string,
+  "rhetorical_analysis": string
+}
+
+Each value should be a detailed paragraph (150-250 words):
+- counter_arguments: The strongest potential counter-arguments to the thesis and how to address them
+- missing_evidence: Under-explored primary sources and evidence gaps that need filling
+- citation_threads: Scholarly conversations and citation networks worth exploring further
+- rhetorical_analysis: Analysis of rhetorical strategies across sources and suggestions for the paper`;
+
+const result = await callAI('genericAI', { prompt });
+
+document.getElementById('insights-empty').classList.add('hidden');
+
+if (result.counter_arguments) {
+document.getElementById('counter-args-content').textContent = result.counter_arguments;
+document.getElementById('counter-args-section').classList.remove('hidden');
+}
+if (result.missing_evidence) {
+document.getElementById('missing-evidence-content').textContent = result.missing_evidence;
+document.getElementById('missing-evidence-section').classList.remove('hidden');
+}
+if (result.citation_threads) {
+document.getElementById('citation-threads-content').textContent = result.citation_threads;
+document.getElementById('citation-threads-section').classList.remove('hidden');
+}
+if (result.rhetorical_analysis) {
+document.getElementById('rhetorical-content').textContent = result.rhetorical_analysis;
+document.getElementById('rhetorical-section').classList.remove('hidden');
+}
+
+appState.insights = result;
+saveState();
+showToast('✅ Insights generated!');
+} catch(e) {
+showToast('❌ ' + (e.message || 'Insights generation failed'));
+} finally {
+hideLoading();
+}
+}
+
+// Settings
+function showSettings() {
+document.getElementById('modal-body').innerHTML = `
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<h3 class="text-lg font-bold">⚙️ Settings</h3>
+<button onclick="document.getElementById('modal').classList.add('hidden')" class="p-2 rounded-lg hover:bg-gray-100">✕</button>
+</div>
+<div class="card p-3 bg-gray-50 border-0">
+<p class="text-xs text-gray-500">Sources: ${appState.sources.length}</p>
+<p class="text-xs text-gray-500">AI Calls Time: ${(window.aiTotalTime/1000).toFixed(1)}s</p>
+<p class="text-xs text-gray-500">Input Tokens: ${window.aiTotalInputTokens}</p>
+<p class="text-xs text-gray-500">Output Tokens: ${window.aiTotalOutputTokens}</p>
+</div>
+<button onclick="exportData()" class="btn-secondary w-full px-4 py-3 text-sm">📤 Export All Data</button>
+<button onclick="clearAllData()" class="btn-secondary w-full px-4 py-3 text-sm text-red-500 border-red-300 hover:bg-red-500 hover:text-white">🗑️ Clear All Data</button>
+<div class="text-center text-xs text-gray-400 pt-2">
+<p>Argument Mapper v1.0</p>
+<p>Built for humanities researchers 📜</p>
+</div>
+</div>`;
+document.getElementById('modal').classList.remove('hidden');
+}
+
+function exportData() {
+const blob = new Blob([JSON.stringify(appState, null, 2)], { type: 'application/json' });
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'argument-mapper-export.json';
+a.click();
+URL.revokeObjectURL(url);
+showToast('📤 Data exported!');
+}
+
+function clearAllData() {
+if (confirm('Are you sure? This will delete all sources and analysis.')) {
+appState = { thesis: '', sources: [], mapNodes: [], mapEdges: [], outline: '', paragraph: '', insights: null };
+localStorage.removeItem('argumentMapper');
+document.getElementById('thesis-input').value = '';
+renderSources();
+showToast('🗑️ All data cleared');
+document.getElementById('modal').classList.add('hidden');
+}
+}
+
+// Initialize
+loadState();
+</script>
+
+</body>
+</html>
